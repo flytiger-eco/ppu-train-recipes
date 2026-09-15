@@ -1,0 +1,31 @@
+# PPU Training Recipes
+
+Performance tuning recipes and best practices for training large models on **PPU**.
+
+```text
+ppu_train_recipe/
+├── dockers/              # Dockerfiles and patches for PPU training images
+└── best_practice/        # Training/tuning recipes for mainstream models
+    └── qwen3.5/
+```
+
+## Supported Models
+
+| Model Family | Path | Description |
+|--------------|------|-------------|
+| Qwen3.5-VL | [`best_practice/qwen3.5`](./best_practice/qwen3.5) | Dense (2B/4B/9B/27B)  recipes. |
+
+## Contributing
+
+
+Contributions are welcome. If you have a new model recipe, Dockerfile, or tuning result:
+
+1. Add the script or Dockerfile under the appropriate folder.
+2. Add or update the `README.md` in the model folder with usage details.
+3. Update the supported-models table in this README with a link to the new folder.
+4. Open a pull request with a concise description of the PPU variant and performance notes.
+
+
+## License
+
+Provided as-is for PPU tuning. Individual scripts retain their upstream licenses.

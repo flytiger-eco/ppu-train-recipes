@@ -1,0 +1,47 @@
+FROM pkg.flytiger-eco.com/docker_release/llm:v2.1.1-pytorch2.10.0-ubuntu24.04-cuda13.0-py312
+
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ 
+
+WORKDIR /workspace
+
+RUN git clone https://github.com/NVIDIA-NeMo/Megatron-Bridge.git /workspace/Megatron-Bridge
+
+WORKDIR /workspace/Megatron-Bridge
+
+COPY dockers/patches/qwen35.patch /tmp/qwen35.patch
+
+# The patch updates the Megatron-LM submodule pointer (930bb6f6 -> de6305c0).
+# Use a shallow submodule clone plus retries to avoid long/incomplete downloads.
+RUN git checkout c9ab9cc124a055392927eee3b2220bc0049caa18 \
+    && git apply /tmp/qwen35.patch \
+    && rm /tmp/qwen35.patch \
+    && git submodule update --init \
+    && git -C 3rdparty/Megatron-LM fetch origin de6305c0ae1e78e04929b7b6d55910ae71046ae8 \
+    && git -C 3rdparty/Megatron-LM checkout de6305c0ae1e78e04929b7b6d55910ae71046ae8
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install \
+        nvidia-modelopt==0.42.0 \
+        transformers==5.3.0 \
+        peft==0.19.1 \
+        diffusers==0.38.0 \
+        huggingface_hub==1.13.0 \
+        datasets==4.8.5 \
+        megatron-energon==6.0.1 \
+        nvidia-resiliency-ext \
+        flash-linear-attention==0.4.2 \
+        qwen-vl-utils==0.0.14 \
+        omegaconf \
+        hydra-core \
+        "fsspec>=2024.3.0" \
+    && python -m pip install -e ./3rdparty/Megatron-LM \
+    && python -m pip install -e . --no-deps \
+    && python -c "import megatron.bridge, megatron.energon, transformers, peft, diffusers, huggingface_hub, datasets, omegaconf, hydra, fsspec; print('megatron-bridge + core deps import ok')"
+
+CMD ["/bin/bash"]
