@@ -6,14 +6,18 @@ Performance tuning recipes and best practices for training large models on **PPU
 ppu_train_recipe/
 ├── dockers/              # Dockerfiles and patches for PPU training images
 └── best_practice/        # Training/tuning recipes for mainstream models
-    └── qwen3.5/
+    ├── cosmos3/
+    ├── qwen3.5/
+    └── wan2.2/
 ```
 
 ## Supported Models
 
 | Model Family | Path | Description |
 |--------------|------|-------------|
-| Qwen3.5-VL | [`best_practice/qwen3.5`](./best_practice/qwen3.5) | Dense (2B/4B/9B/27B)  recipes. |
+| Qwen3.5-VL | [`best_practice/qwen3.5`](./best_practice/qwen3.5) | Dense (2B/4B/9B/27B) and MoE (35B-A3B) recipes. |
+| Cosmos3 | [`best_practice/cosmos3`](./best_practice/cosmos3) | Official source plus M890 Nano/Super training changes. |
+| WAN 2.2 5B | [`best_practice/wan2.2`](./best_practice/wan2.2) | M890 TI2V full-parameter training recipe. |
 
 ## Contributing
 
