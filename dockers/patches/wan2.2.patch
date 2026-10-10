@@ -1,0 +1,78 @@
+diff --git a/videox_fun/dist/fuser.py b/videox_fun/dist/fuser.py
+index 602d51a..1765e35 100755
+--- a/videox_fun/dist/fuser.py
++++ b/videox_fun/dist/fuser.py
+@@ -34,7 +34,7 @@ except Exception:
+     get_sp_group = get_world_group = None
+     init_distributed_environment = initialize_model_parallel = None
+     model_parallel_is_initialized = None
+-    xFUserLongContextAttention = None
+-
++    xFuserLongContextAttention = None
++
+ def set_multi_gpus_devices(ulysses_degree, ring_degree, classifier_free_guidance_degree=1):
+     if ulysses_degree > 1 or ring_degree > 1 or classifier_free_guidance_degree > 1:
+diff --git a/scripts/wan2.2/train_ti2v_5b_singleview.sh b/scripts/wan2.2/train_ti2v_5b_singleview.sh
+new file mode 100755
+index 0000000..4a460b2
+--- /dev/null
++++ b/scripts/wan2.2/train_ti2v_5b_singleview.sh
+@@ -0,0 +1,58 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++MODEL_NAME="${MODEL_NAME:-/workspace/wan2.2-assets/models/Wan2.2-TI2V-5B}"
++DATASET_NAME="${DATASET_NAME:-/workspace/wan2.2-assets/datasets/X-Fun-Videos-Demo}"
++DATASET_META_NAME="${DATASET_META_NAME:-$DATASET_NAME/metadata_add_width_height.json}"
++OUTPUT_DIR="${OUTPUT_DIR:-/workspace/wan2.2-assets/outputs/ti2v_5b_singleview}"
++MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-50}"
++
++export NCCL_DEBUG="${NCCL_DEBUG:-INFO}"
++export PYTORCH_ENABLE_PPU_ELEMENTWISE_OPT="${PYTORCH_ENABLE_PPU_ELEMENTWISE_OPT:-True}"
++export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
++
++[[ -f "$MODEL_NAME/config.json" ]] || { echo "ERROR: missing $MODEL_NAME/config.json" >&2; exit 1; }
++[[ -f "$DATASET_META_NAME" ]] || { echo "ERROR: missing $DATASET_META_NAME" >&2; exit 1; }
++mkdir -p "$OUTPUT_DIR"
++
++accelerate launch --num_processes=8 --mixed_precision="bf16" --use_fsdp \
++  --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP \
++  --fsdp_transformer_layer_cls_to_wrap=WanAttentionBlock \
++  --fsdp_sharding_strategy "FULL_SHARD" \
++  --fsdp_state_dict_type=SHARDED_STATE_DICT \
++  --fsdp_backward_prefetch "BACKWARD_PRE" \
++  --fsdp_cpu_ram_efficient_loading False \
++  scripts/wan2.2/train.py \
++  --config_path="config/wan2.2/wan_civitai_5b.yaml" \
++  --pretrained_model_name_or_path="$MODEL_NAME" \
++  --train_data_dir="$DATASET_NAME" \
++  --train_data_meta="$DATASET_META_NAME" \
++  --image_sample_size=960 \
++  --video_sample_size=960 \
++  --token_sample_size=960 \
++  --video_sample_stride=1 \
++  --video_sample_n_frames=49 \
++  --train_batch_size=1 \
++  --video_repeat=1 \
++  --gradient_accumulation_steps=1 \
++  --dataloader_num_workers=2 \
++  --max_train_steps="$MAX_TRAIN_STEPS" \
++  --checkpointing_steps=100 \
++  --learning_rate=1e-05 \
++  --lr_scheduler="constant_with_warmup" \
++  --lr_warmup_steps=100 \
++  --seed=42 \
++  --output_dir="$OUTPUT_DIR" \
++  --gradient_checkpointing \
++  --mixed_precision="bf16" \
++  --adam_weight_decay=3e-2 \
++  --adam_epsilon=1e-10 \
++  --vae_mini_batch=1 \
++  --max_grad_norm=0.05 \
++  --random_hw_adapt \
++  --training_with_video_token_length \
++  --enable_bucket \
++  --uniform_sampling \
++  --train_mode="ti2v" \
++  --boundary_type="full" \
++  --trainable_modules "."

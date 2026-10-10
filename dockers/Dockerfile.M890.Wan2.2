@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.6
+ARG BASE_IMAGE=pkg.flytiger-eco.com/docker_release/pytorch:sdk2.2.0-2.10.0-ubuntu24.04-cuda13.0-py312-20261001
+FROM ${BASE_IMAGE}
+
+ARG VIDEOX_FUN_REPO=https://github.com/aigc-apps/VideoX-Fun.git
+ARG VIDEOX_FUN_REF=67e3b4b8184ae8ff61ab3e3fbdb68bb817f41515
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    PYTORCH_ENABLE_PPU_ELEMENTWISE_OPT=True \
+    VIDEOX_FUN_ROOT=/workspace/VideoX-Fun
+
+SHELL ["/bin/bash", "-lc"]
+
+RUN sed -i -E 's|^URIs:.*|URIs: https://mirrors.aliyun.com/ubuntu/|' \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg git git-lfs libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY dockers/patches/wan2.2.patch /tmp/wan2.2.patch
+RUN rm -f /root/.gitconfig \
+    && git clone --filter=blob:none "${VIDEOX_FUN_REPO}" "${VIDEOX_FUN_ROOT}" \
+    && git -C "${VIDEOX_FUN_ROOT}" checkout "${VIDEOX_FUN_REF}" \
+    && git -C "${VIDEOX_FUN_ROOT}" apply --check /tmp/wan2.2.patch \
+    && git -C "${VIDEOX_FUN_ROOT}" apply /tmp/wan2.2.patch \
+    && rm /tmp/wan2.2.patch
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -e "${VIDEOX_FUN_ROOT}" \
+    && python -m pip install --no-deps "diffusers==0.36.0" "omegaconf==2.3.0" \
+    && python -m pip install \
+        "peft==0.17.0" "antlr4-python3-runtime==4.9.3" \
+        opencv-python av imageio imageio-ffmpeg \
+        librosa sentencepiece tomesd torchdiffeq torchsde \
+        scikit-image albumentations yunchang xfuser \
+        "transformers==4.51.0" "scipy==1.11.3" "numpy==1.26.4" einops uv \
+    && python -m pip uninstall -y torchao \
+    && python -m pip install --upgrade \
+        "diffusers==0.36.0" "peft==0.17.0" "transformers==4.51.0" \
+        "scipy==1.11.3" "numpy==1.26.4" "omegaconf==2.3.0"
+
+RUN python -c "import accelerate, diffusers, peft, transformers, torch; assert diffusers.__version__ == '0.36.0'; assert peft.__version__ == '0.17.0'; assert transformers.__version__ == '4.51.0'; print('WAN 2.2 dependencies import ok')" \
+    && bash -n "${VIDEOX_FUN_ROOT}/scripts/wan2.2/train_ti2v_5b_singleview.sh"
+
+WORKDIR /workspace/VideoX-Fun
+CMD ["/bin/bash"]
