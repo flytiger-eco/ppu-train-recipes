@@ -1,0 +1,1127 @@
+diff --git a/.gitattributes b/.gitattributes
+index dba17f50bc1f5dc4f8691e3c1a0f24295c4132f2..bc47740306ea6b61d5ca150572ad209eae3cbe77 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -2,24 +2,8 @@
+ tests/data/** linguist-generated=true
+ ATTRIBUTIONS.md linguist-generated=true
+ 
+-assets/** filter=lfs diff=lfs merge=lfs -text
+-
+-# Video files
+-*.mp4 filter=lfs diff=lfs merge=lfs -text
+-*.avi filter=lfs diff=lfs merge=lfs -text
+-*.mov filter=lfs diff=lfs merge=lfs -text
+-*.mkv filter=lfs diff=lfs merge=lfs -text
+-*.webm filter=lfs diff=lfs merge=lfs -text
+-
+-# Audio files
+-*.wav filter=lfs diff=lfs merge=lfs -text
+-*.mp3 filter=lfs diff=lfs merge=lfs -text
+-*.flac filter=lfs diff=lfs merge=lfs -text
+-*.aac filter=lfs diff=lfs merge=lfs -text
+-
+-# Image files
+-*.jpg filter=lfs diff=lfs merge=lfs -text
+-*.jpeg filter=lfs diff=lfs merge=lfs -text
+-*.png filter=lfs diff=lfs merge=lfs -text
+-*.tiff filter=lfs diff=lfs merge=lfs -text
+-*.bmp filter=lfs diff=lfs merge=lfs -text
++# NOTE: LFS filters removed. The internal gitlab mirror does not host LFS
++# objects, which caused "Smudge error: Object does not exist [404]" on
++# clone/checkout. Files previously tracked via LFS will be checked out as
++# their pointer text. Do not re-add `filter=lfs` unless the remote actually
++# serves the corresponding LFS objects.
+diff --git a/cosmos_framework/configs/base/defaults/tokenizer.py b/cosmos_framework/configs/base/defaults/tokenizer.py
+index 526d5790e7d87fd1d44cdb9edd4b3d4e891aa7e1..9566b97b5fa31e2f0707225dba1b157321e1ee0a 100644
+--- a/cosmos_framework/configs/base/defaults/tokenizer.py
++++ b/cosmos_framework/configs/base/defaults/tokenizer.py
+@@ -14,6 +14,7 @@ from cosmos_framework.model.vfm.tokenizers.wan2pt2_vae_4x16x16 import Wan2pt2VAE
+ 
+ PRETRAINED_TOKENIZER_WAN2PT1_VAE_PTH = "pretrained/tokenizers/video/wan2pt1/Wan2.1_VAE.pth"
+ PRETRAINED_TOKENIZER_WAN2PT2_VAE_PTH = "pretrained/tokenizers/video/wan2pt2/Wan2.2_VAE.pth"
++
+ PRETRAINED_TOKENIZER_FLUX_VAE_PTH = "pretrained/tokenizers/image/flux/ae.safetensors"
+ 
+ # UniAE checkpoint paths
+diff --git a/cosmos_framework/configs/base/experiment/sft/models/nano_model_config.py b/cosmos_framework/configs/base/experiment/sft/models/nano_model_config.py
+index 37f268946f0b8e50e0e827bdfe5c7b0529566f22..8742b51cd013c78d349970b0f01051cc0ae0279f 100644
+--- a/cosmos_framework/configs/base/experiment/sft/models/nano_model_config.py
++++ b/cosmos_framework/configs/base/experiment/sft/models/nano_model_config.py
+@@ -15,6 +15,8 @@ from cosmos_framework.configs.base.defaults.vlm import (
+ from cosmos_framework.model.vfm.mot.unified_mot import Qwen3VLMoTConfig, Qwen3VLTextForCausalLM
+ from cosmos_framework.utils.lazy_config import LazyCall as L
+ 
++
++
+ NANO_MODEL_CONFIG = dict(
+     action_gen=True,
+     causal_training_strategy="none",
+@@ -38,7 +40,7 @@ NANO_MODEL_CONFIG = dict(
+         base_fps=24,
+         enable_fps_modulation=True,
+         load_weights_from_pretrained=True,
+-        max_vae_latent_side_after_patchify=20,
++        max_vae_latent_side_after_patchify=64,
+         patch_spatial=2,
+         position_embedding_type="unified_3d_mrope",
+         rope_h_extrapolation_ratio=1.0,
+@@ -92,7 +94,7 @@ NANO_MODEL_CONFIG = dict(
+         independent_action_schedule=False,
+         loss_scale=1.0,
+         normalize_loss_by_active=False,
+-        shift={"256": 3, "480": 5, "720": 10},
++        shift={"256": 3, "480": 5, "720": 10, "1080": 17},
+         train_time_action_distribution="logitnormal",
+         train_time_image_distribution="logitnormal",
+         train_time_sound_distribution="logitnormal",
+@@ -106,7 +108,7 @@ NANO_MODEL_CONFIG = dict(
+     tokenizer=dict(
+         bucket_name="",
+         chunk_duration=93,
+-        encode_chunk_frames={"256": 68, "480": 24, "720": 12},
++        encode_chunk_frames={"256": 68, "480": 24, "720": 12, "1080": 4},
+         encode_exact_durations=None,
+         keep_decoder_cache=False,
+         object_store_credential_path_pretrained="",
+diff --git a/cosmos_framework/configs/base/experiment/sft/models/super_model_config.py b/cosmos_framework/configs/base/experiment/sft/models/super_model_config.py
+index 0400f8daad21f845ac31ae4c063454a62edb08d3..f01f6f8d3917afdccaf38e0b37bc01dcda6aac6f 100644
+--- a/cosmos_framework/configs/base/experiment/sft/models/super_model_config.py
++++ b/cosmos_framework/configs/base/experiment/sft/models/super_model_config.py
+@@ -114,7 +114,7 @@ SUPER_MODEL_CONFIG = dict(
+         independent_action_schedule=False,
+         loss_scale=1.0,
+         normalize_loss_by_active=False,
+-        shift={"256": 3, "480": 5, "720": 10},
++        shift={"256": 3, "480": 5, "720": 10, "1080": 17},
+         train_time_action_distribution="logitnormal",
+         train_time_image_distribution="logitnormal",
+         train_time_sound_distribution="logitnormal",
+@@ -128,7 +128,7 @@ SUPER_MODEL_CONFIG = dict(
+     tokenizer=dict(
+         bucket_name="",
+         chunk_duration=93,
+-        encode_chunk_frames={"256": 68, "480": 24, "720": 12},
++        encode_chunk_frames={"256": 68, "480": 24, "720": 12, "1080": 4},
+         encode_exact_durations=None,
+         keep_decoder_cache=False,
+         object_store_credential_path_pretrained="",
+diff --git a/cosmos_framework/configs/base/experiment/sft/vision_sft_nano.py b/cosmos_framework/configs/base/experiment/sft/vision_sft_nano.py
+index 46957d19110a3a1ecea36a0c10735a9830f37f3b..81c9b78fcefa515afe54e150a3b353f6d9fc11c4 100644
+--- a/cosmos_framework/configs/base/experiment/sft/vision_sft_nano.py
++++ b/cosmos_framework/configs/base/experiment/sft/vision_sft_nano.py
+@@ -231,10 +231,10 @@ vision_sft_nano = LazyDict(
+             dataloader=L(RankPartitionedDataLoader)(
+                 batch_size=1,
+                 in_order=True,
+-                num_workers=4,
++                num_workers=2,
+                 persistent_workers=True,
+                 pin_memory=True,
+-                prefetch_factor=4,
++                prefetch_factor=2,
+                 sampler=None,
+                 datasets=dict(
+                     video=dict(
+@@ -258,7 +258,7 @@ vision_sft_nano = LazyDict(
+                             jsonl_paths=["${oc.env:DATASET_PATH}/train/video_dataset_file.jsonl"],
+                             min_short_edge=0,
+                             num_video_frames=-1,
+-                            resolution="256",
++                            resolution="1080",
+                             sample_by_window=False,
+                             temporal_compression_factor=4,
+                             temporal_interval_mode="max_30fps",
+diff --git a/cosmos_framework/configs/base/experiment/sft/vision_sft_super.py b/cosmos_framework/configs/base/experiment/sft/vision_sft_super.py
+index a49bb3d9d30890afae33846728cad3a3552db743..7305ff3db5e59b3c6262325102a904a4ba0b1d51 100644
+--- a/cosmos_framework/configs/base/experiment/sft/vision_sft_super.py
++++ b/cosmos_framework/configs/base/experiment/sft/vision_sft_super.py
+@@ -269,7 +269,7 @@ vision_sft_super = LazyDict(
+                             jsonl_paths=["${oc.env:DATASET_PATH}/train/video_dataset_file.jsonl"],
+                             min_short_edge=0,
+                             num_video_frames=-1,
+-                            resolution="256",
++                            resolution="1080",
+                             sample_by_window=False,
+                             temporal_compression_factor=4,
+                             temporal_interval_mode="max_30fps",
+diff --git a/cosmos_framework/configs/toml_config/sft_config.py b/cosmos_framework/configs/toml_config/sft_config.py
+index a15d00ae6f2b4427e58715e7b0bf6ed56d962530..831f6e1baa03a964656a32320ea49504f21c3926 100644
+--- a/cosmos_framework/configs/toml_config/sft_config.py
++++ b/cosmos_framework/configs/toml_config/sft_config.py
+@@ -534,6 +534,19 @@ class GradClipCallback(BaseModel):
+             "True; VLM defaults to False."
+         ),
+     )
++class ProfilingConfig(BaseModel):
++    """torch.profiler settings surfaced via ``maybe_enable_profiling``."""
++
++    model_config = _PYDANTIC_MODEL_CONFIG
++    enable_profiling: bool = Field(default=False, description="Enable torch.profiler trace collection.")
++    profile_freq: int = Field(default=1, description="Profile every N optimizer steps.")
++    profile_warmup: int = Field(default=3, description="Warmup steps before active profiling.")
++    target_ranks: list[int] = Field(default_factory=lambda: [0], description="Ranks to collect traces from.")
++    record_shape: bool = Field(default=False, description="Record tensor shapes in trace.")
++    profile_memory: bool = Field(default=False, description="Record memory allocations.")
++    with_stack: bool = Field(default=True, description="Record Python call stacks.")
++    with_modules: bool = Field(default=True, description="Record nn.Module hierarchy.")
++
+ 
+ 
+ class TrainerCallbacksConfig(BaseModel):
+@@ -577,6 +590,7 @@ class TrainerConfig(BaseModel):
+         description="Total number of optimizer steps the run will execute.",
+     )
+     callbacks: TrainerCallbacksConfig = Field(default_factory=TrainerCallbacksConfig)
++    profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
+ 
+ 
+ # ---------------------------------------------------------------- checkpoint
+diff --git a/cosmos_framework/data/vfm/utils.py b/cosmos_framework/data/vfm/utils.py
+index 8b04f0a9b81c2884f21c66e77e9ffa8e648fbdac..96a5d0c5b585e1207c48b6a21855f870a9cb24ed 100644
+--- a/cosmos_framework/data/vfm/utils.py
++++ b/cosmos_framework/data/vfm/utils.py
+@@ -20,7 +20,7 @@ IMAGE_RES_SIZE_INFO: dict[str, dict[str, tuple[int, int]]] = {
+     "720": {"1,1": (960, 960), "4,3": (1104, 832), "3,4": (832, 1104), "16,9": (1280, 720), "9,16": (720, 1280)},
+     # 768 for arena.ai
+     "768": {"1,1": (1024, 1024), "4,3": (1184, 880), "3,4": (880, 1184), "16,9": (1360, 768), "9,16": (768, 1360)},
+-    "1080": {"1,1": (1440, 1440), "4,3": (1664, 1248), "3,4": (1248, 1664), "16,9": (1920, 1080), "9,16": (1080, 1920)},
++    "1080": {"1,1": (1440, 1440), "4,3": (1664, 1248), "3,4": (1248, 1664), "16,9": (1920, 1088), "9,16": (1088, 1920)},
+     "1280": {"1,1": (1712, 1712), "4,3": (1968, 1472), "3,4": (1472, 1968), "16,9": (2272, 1280), "9,16": (1280, 2272)},
+     "2048": {
+         "1,1": (2728, 2728),
+@@ -54,7 +54,7 @@ VIDEO_RES_SIZE_INFO: dict[str, dict[str, tuple[int, int]]] = {
+     "720": {"1,1": (960, 960), "4,3": (1104, 832), "3,4": (832, 1104), "16,9": (1280, 720), "9,16": (720, 1280)},
+     # 768 for arena.ai
+     "768": {"1,1": (1024, 1024), "4,3": (1184, 880), "3,4": (880, 1184), "16,9": (1360, 768), "9,16": (768, 1360)},
+-    "1080": {"1,1": (1440, 1440), "4,3": (1664, 1248), "3,4": (1248, 1664), "16,9": (1920, 1080), "9,16": (1080, 1920)},
++    "1080": {"1,1": (1440, 1440), "4,3": (1664, 1248), "3,4": (1248, 1664), "16,9": (1920, 1088), "9,16": (1088, 1920)},
+     "1280": {"1,1": (1712, 1712), "4,3": (1968, 1472), "3,4": (1472, 1968), "16,9": (2272, 1280), "9,16": (1280, 2272)},
+     "2048": {
+         "1,1": (2728, 2728),
+diff --git a/cosmos_framework/model/attention/backends.py b/cosmos_framework/model/attention/backends.py
+index 4236b35b55ba19e45b6580b677f89b97824862af..20137e77b355e72321a9e6bc604b001eab0ef027 100644
+--- a/cosmos_framework/model/attention/backends.py
++++ b/cosmos_framework/model/attention/backends.py
+@@ -141,6 +141,7 @@ def get_backend_list(arch_tag: int) -> list[str]:
+         ]
+     elif arch_tag >= 80:
+         default_backends = [
++            "flash3",
+             "flash2",
+             "natten",
+         ]
+diff --git a/cosmos_framework/model/attention/flash3/__init__.py b/cosmos_framework/model/attention/flash3/__init__.py
+index a4122873164ca5a1fcc19031a969ba87140de484..4d5c319af7d8a9b7878acb96791608a941f82d5a 100644
+--- a/cosmos_framework/model/attention/flash3/__init__.py
++++ b/cosmos_framework/model/attention/flash3/__init__.py
+@@ -32,21 +32,20 @@ def flash3_supported() -> bool:
+     try:
+         # pyrefly: ignore  # missing-import
+         import flash_attn_3_nv
+-
+     except ImportError:
+-        log.debug("Flash Attention v3 is not supported because the Python package ('flash_attn_3_nv'_) was not found.")
+-        return False
++        try:
++            # pyrefly: ignore  # missing-import
++            import flash_attn_3
++        except ImportError:
++            log.debug("Flash Attention v3 is not supported because neither 'flash_attn_3_nv' nor 'flash_attn_3' was found.")
++            return False
++        except Exception as e:
++            log.debug(f"Flash Attention v3 is not supported because importing the Python package failed: {e}")
++            return False
+     except Exception as e:
+         log.debug(f"Flash Attention v3 is not supported because importing the Python package failed: {e}")
+         return False
+ 
+-    if not version_at_least(flash_attn_3_nv.__version__, FLASH_ATTENTION_V3_MIN_VERSION):
+-        log.debug(
+-            f"Flash Attention v3 ('flash_attn_3_nv') build is not supported; minimum required version is "
+-            f"{FLASH_ATTENTION_V3_MIN_VERSION}, got {flash_attn_3_nv.__version__}."
+-        )
+-        return False
+-
+     return True
+ 
+ 
+diff --git a/cosmos_framework/model/attention/flash3/functions.py b/cosmos_framework/model/attention/flash3/functions.py
+index 76c150514cfa3a47cd489fea1070403447b25e37..952a129f7e2f4918853da11891184a3fe8227d41 100644
+--- a/cosmos_framework/model/attention/flash3/functions.py
++++ b/cosmos_framework/model/attention/flash3/functions.py
+@@ -11,8 +11,12 @@ Only safe to import when FLASH3_SUPPORTED is True.
+ 
+ import inspect
+ 
+-# pyrefly: ignore  # missing-import
+-from flash_attn_3_nv.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
++try:
++    # pyrefly: ignore  # missing-import
++    from flash_attn_3_nv.flash_attn_interface import flash_attn_func, flash_attn_varlen_func
++except ImportError:
++    # pyrefly: ignore  # missing-import
++    from flash_attn_interface import flash_attn_func, flash_attn_varlen_func
+ from torch import Tensor
+ 
+ # NOTE: older commits didn't have `return_attn_probs` as an argument, and there is no
+diff --git a/cosmos_framework/model/attention/flash3/meta.py b/cosmos_framework/model/attention/flash3/meta.py
+index 338494c73acba6c82b28b186f4c3008b89c0da12..f2e4126b6e5435a7082bb3201538ae3064a04cb9 100644
+--- a/cosmos_framework/model/attention/flash3/meta.py
++++ b/cosmos_framework/model/attention/flash3/meta.py
+@@ -26,7 +26,7 @@ def get_fwd_dtypes(arch_tag: int) -> list[torch.dtype]:
+ 
+     """
+ 
+-    if arch_tag != 90:
++    if arch_tag != 90 and arch_tag != 89 and arch_tag != 80:
+         log.debug("Flash Attention v3 (flash3) only supports compute capability 9.0 (Hopper).")
+         return []
+ 
+@@ -45,7 +45,7 @@ def get_bwd_dtypes(arch_tag: int) -> list[torch.dtype]:
+ 
+     """
+ 
+-    if arch_tag != 90:
++    if arch_tag != 90 and arch_tag != 89 and arch_tag != 80:
+         log.debug("Flash Attention v3 (flash3) only supports compute capability 9.0 (Hopper).")
+         return []
+ 
+diff --git a/cosmos_framework/model/vfm/omni_mot_model.py b/cosmos_framework/model/vfm/omni_mot_model.py
+index 652b9306ce717dddae1f10e97f21c2f0d1a4c202..72a7cb2c9eb3de4cc5e4e7b30e1145bd2cf98127 100644
+--- a/cosmos_framework/model/vfm/omni_mot_model.py
++++ b/cosmos_framework/model/vfm/omni_mot_model.py
+@@ -2853,9 +2853,13 @@ class OmniMoTModel(ImaginaireModel):
+         self._normalize_video_databatch_inplace(data_batch)
+         self._augment_image_dim_inplace(data_batch)  # converts each image tensor to (1, C, 1, H, W)
+         raw_state_vision = data_batch[self.input_image_key if is_image_batch else self.input_video_key]
+-        x0_tokens_vision = [
+-            self.encode(raw_state_vision_i).contiguous().float() for raw_state_vision_i in raw_state_vision
+-        ]
++        x0_tokens_vision = []
++        for _i, raw_state_vision_i in enumerate(raw_state_vision):
++            _latent = self.encode(raw_state_vision_i).contiguous().float()
++            if _i == 0 and torch.distributed.get_rank() == 0:
++                print(f"[VAE_SHAPE_CHECK] input pixel shape: {raw_state_vision_i.shape}, "
++                      f"output latent shape: {_latent.shape}", flush=True)
++            x0_tokens_vision.append(_latent)
+ 
+         frame_size = data_batch.get("image_size", None)
+         if frame_size is not None:
+diff --git a/cosmos_framework/scripts/train.py b/cosmos_framework/scripts/train.py
+index 7d19e1cbe63770aa17188f1310e3fd147a49ac73..734857e7a4684319696ab589e62e574392d77ae5 100644
+--- a/cosmos_framework/scripts/train.py
++++ b/cosmos_framework/scripts/train.py
+@@ -28,6 +28,27 @@ import os
+ import traceback
+ 
+ import torch
++import torch.multiprocessing
++torch.multiprocessing.set_sharing_strategy('file_system')
++# PPU (39 SMs): Inductor's mix-order reduction heuristic picks split_size=128
++# -> XBLOCK=4 -> the 3-stage pipeline needs ~426KB smem, exceeding the 256KB
++# per-SM limit ("No valid triton configs ... out of resource: shared memory").
++# Pin split_size=32 to reproduce the shape a 132-SM GPU computes automatically
++# (~106KB). Only needed on torch 2.10.x: 2.11 already defaults NUM_STAGES=1 for
++# mix-order reduction kernels and is safe without this override.
++def _is_ppu() -> bool:
++    try:
++        from torch.testing._utils import is_ppu  # torch>=2.11 PPU wheel
++
++        return is_ppu()
++    except ImportError:
++        return "PPU_SDK" in os.environ  # same check as torch's is_ppu
++
++
++if _is_ppu() and torch.__version__.startswith("2.10."):
++    import torch._inductor.config
++
++    torch._inductor.config.triton.mix_order_reduction_split_size = 32
+ from loguru import logger as logging
+ 
+ from cosmos_framework.utils.config import Config
+diff --git a/cosmos_framework/trainer/__init__.py b/cosmos_framework/trainer/__init__.py
+index 5a63f229616d1018afe7a9412f7c75c52978c89a..bbe4aca399d64d8ce00bed42e1b9d31fb8d38f7c 100644
+--- a/cosmos_framework/trainer/__init__.py
++++ b/cosmos_framework/trainer/__init__.py
+@@ -54,18 +54,19 @@ class ImaginaireTrainer:
+         with distributed_init():
+             distributed.init()
+             # Set up parallel states.
+-            if hasattr(config.model, "context_parallel_size"):
+-                if config.model_parallel.context_parallel_size > 1:
+-                    raise ValueError(
+-                        "Both config.model.context_parallel_size and config.model_parallel.context_parallel_size are set. "
+-                        "config.model.context_parallel_size is deprecated. Please only set config.model_parallel.context_parallel_size."
+-                    )
+-                else:
+-                    log.critical(
+-                        "Using deprecated config.model.context_parallel_size. Please use config.model_parallel.context_parallel_size instead."
+-                    )
+-                    config.model_parallel.context_parallel_size = config.model.context_parallel_size
+-            if USE_MEGATRON:
++            if config.model_parallel is not None:
++                if hasattr(config.model, "context_parallel_size"):
++                    if config.model_parallel.context_parallel_size > 1:
++                        raise ValueError(
++                            "Both config.model.context_parallel_size and config.model_parallel.context_parallel_size are set. "
++                            "config.model.context_parallel_size is deprecated. Please only set config.model_parallel.context_parallel_size."
++                        )
++                    else:
++                        log.critical(
++                            "Using deprecated config.model.context_parallel_size. Please use config.model_parallel.context_parallel_size instead."
++                        )
++                        config.model_parallel.context_parallel_size = config.model.context_parallel_size
++            if USE_MEGATRON and config.model_parallel is not None:
+                 if (
+                     "create_gloo_process_groups"
+                     in inspect.signature(parallel_state.initialize_model_parallel).parameters
+diff --git a/cosmos_framework/utils/checkpoint_db.py b/cosmos_framework/utils/checkpoint_db.py
+index 580f92feabd667705c83d266785cf3f06b459f25..3dedb0271281c2b22ea875d5d539d3e2830c8982 100644
+--- a/cosmos_framework/utils/checkpoint_db.py
++++ b/cosmos_framework/utils/checkpoint_db.py
+@@ -140,22 +140,71 @@ CheckpointS3: TypeAlias = CheckpointFileS3 | CheckpointDirS3
+ 
+ 
+ def _hf_download(cmd_args: list[str]) -> str:
+-    """Run Hugging Face CLI download command and return the local path.
++    """Download checkpoint via ModelScope and return the local path.
+ 
+-    Uses a newer Hugging Face CLI version to download checkpoint. The dependency
+-    version is very old and not robust.
++    Parses the original Hugging Face CLI arguments and redirects to
++    ``modelscope.snapshot_download`` so no code changes are needed at
++    call-sites.
+     """
++    # HF repo ID -> ModelScope repo ID mapping
++    _HF_TO_MS_REPO = {
++        "nvidia/Cosmos3-Nano": "nv-community/Cosmos3-Nano",
++        "nvidia/Cosmos3-Super": "nv-community/Cosmos3-Super",
++        "nvidia/Cosmos3-Nano-Reasoner": "nv-community/Cosmos3-Nano-Reasoner",
++        "nvidia/Cosmos3-Super-Reasoner": "nv-community/Cosmos3-Super-Reasoner",
++        "nvidia/Cosmos-Guardrail1": "nv-community/Cosmos-Guardrail1",
++    }
++
++    # Parse HF-style cmd_args: [repo, --repo-type, X, --revision, R, [--include P | filename] ...]
++    repository = cmd_args[0]
++    repository = _HF_TO_MS_REPO.get(repository, repository)
++    revision = "main"
++    patterns: list[str] = []
++    i = 1
++    while i < len(cmd_args):
++        if cmd_args[i] == "--revision" and i + 1 < len(cmd_args):
++            revision = cmd_args[i + 1]
++            i += 2
++        elif cmd_args[i] == "--include" and i + 1 < len(cmd_args):
++            patterns.append(cmd_args[i + 1])
++            i += 2
++        elif cmd_args[i] in ("--repo-type", "--format=json"):
++            i += 2 if cmd_args[i] == "--repo-type" else 1
++        else:
++            # Positional arg – treat as filename pattern
++            patterns.append(cmd_args[i])
++            i += 1
++
++    # ModelScope uses 'master' as default branch, not 'main'.
++    # Also, HF commit hashes are not valid ModelScope revisions — fall back to 'master'.
++    import re as _re
++    if revision == "main" or _re.fullmatch(r"[0-9a-f]{40}", revision):
++        revision = "master"
++
+     is_rank0 = os.environ.get("RANK", "0") == "0"
++    # Build a one-liner that calls modelscope.snapshot_download and prints JSON
++    _script = "\n".join([
++        "import json, sys, os",
++        "pats = eval(sys.argv[3]) if sys.argv[3] else None",
++        "pats = pats if (pats and pats != ['*']) else None",
++        "if pats and len(pats) == 1 and '/' not in pats[0] and not any(c in pats[0] for c in '*?'):",
++        "    from modelscope.hub.file_download import model_file_download",
++        "    p = model_file_download(model_id=sys.argv[1], file_path=pats[0], revision=sys.argv[2])",
++        "    print(json.dumps({'path': p}))",
++        "else:",
++        "    from modelscope.hub.snapshot_download import snapshot_download",
++        "    kwargs = {'revision': sys.argv[2]}",
++        "    if pats: kwargs['allow_patterns'] = pats",
++        "    p = snapshot_download(sys.argv[1], **kwargs)",
++        "    print(json.dumps({'path': p}))",
++    ])
+     cmd = [
+         "uvx",
+-        "--with",
+-        "click",
+-        f"hf@{HF_VERSION}",
+-        "download",
+-        "--format=json",
+-        *cmd_args,
++        "--with", "modelscope",
++        "python", "-c", _script,
++        repository, revision, str(patterns),
+     ]
+-    log.info(f"{shlex.join(cmd)}")
++    log.info(f"ModelScope download: {shlex.join(cmd[:6])} repo={repository} revision={revision} patterns={patterns}")
+     output = subprocess.run(
+         cmd,
+         stdout=subprocess.PIPE,
+diff --git a/cosmos_framework/utils/vfm/data_utils.py b/cosmos_framework/utils/vfm/data_utils.py
+index 4ffb1e245af3219a26e9c7aa9d2a119dfc13015c..36fe90e105de017e47a7c73e86a180816e785592 100644
+--- a/cosmos_framework/utils/vfm/data_utils.py
++++ b/cosmos_framework/utils/vfm/data_utils.py
+@@ -45,6 +45,8 @@ def get_vision_data_resolution(spatial_shape: tuple[int, int]) -> str:
+         return "480"
+     elif min_dim <= 960:
+         return "720"
++    elif min_dim <= 1440:
++        return "1080"
+     else:
+         raise ValueError(f"Unsupported resolution: {spatial_shape}")
+ 
+diff --git a/examples/launch_sft_vision_nano_1920_1200_profile.sh b/examples/launch_sft_vision_nano_1920_1200_profile.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..6b8792b2cfccfc0f4981289661f6616614975098
+--- /dev/null
++++ b/examples/launch_sft_vision_nano_1920_1200_profile.sh
+@@ -0,0 +1,16 @@
++#!/usr/bin/env bash
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++# 1920x1200 profiling launch for vision_sft_nano (8-GPU FSDP).
++# Based on launch_sft_vision_nano.sh with dataset path pointing to
++# synthetic_1k_1920x1200 and profiling enabled in the TOML.
++
++TOML_FILE="examples/toml/sft_config/vision_sft_nano.toml"
++: "${DATASET_PATH:=examples/data/synthetic_1k_1920x1200}"
++: "${BASE_CHECKPOINT_PATH:=examples/checkpoints/Cosmos3-Nano}"
++NPROC_PER_NODE=8
++
++EXTRA_DATASET_CHECK='[[ -f "$DATASET_PATH/train/video_dataset_file.jsonl" ]] || { echo "ERROR: missing $DATASET_PATH/train/video_dataset_file.jsonl" >&2; exit 1; }'
++
++source "$(dirname "${BASH_SOURCE[0]}")/_sft_launcher_common.sh"
+diff --git a/examples/launch_sft_vision_super_1920_1200_sft.sh b/examples/launch_sft_vision_super_1920_1200_sft.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..540cf7e712e43be26b34e31585c8006682ff4aa8
+--- /dev/null
++++ b/examples/launch_sft_vision_super_1920_1200_sft.sh
+@@ -0,0 +1,32 @@
++#!/usr/bin/env bash
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++# Structured-TOML launch for vision_sft_super (T2V / I2V / V2V LoRA SFT on
++# Qwen3-VL-32B-Instruct, 8-GPU FSDP with CP=2 / DP=4). Drives
++# cosmos_framework.scripts.train against examples/toml/sft_config/vision_sft_super.toml.
++#
++# Optional env vars (defaults below point under examples/; override to put
++# data or checkpoints on a different filesystem):
++#   DATASET_PATH          default: examples/data/BridgeData2-Subset-Synthetic-Captions/sft_dataset_bridge
++#                         (must contain train/video_dataset_file.jsonl)
++#   BASE_CHECKPOINT_PATH  default: examples/checkpoints/Cosmos3-Super
++#   WAN_VAE_PATH          default: examples/checkpoints/wan22_vae/Wan2.2_VAE.pth
++#   HF_TOKEN              if any tokenizer download requires gated HF access
++#   OUTPUT_ROOT           default: outputs/train
++#
++# Usage (8-GPU allocation, inside the training container, from the repo root):
++#   bash examples/launch_sft_vision_super.sh
++
++TOML_FILE="examples/toml/sft_config/vision_sft_super_sft.toml"
++: "${DATASET_PATH:=examples/data/BridgeData2-Subset-Synthetic-Captions/sft_dataset_bridge}"
++: "${BASE_CHECKPOINT_PATH:=examples/checkpoints/Cosmos3-Super}"
++
++EXTRA_DATASET_CHECK='[[ -f "$DATASET_PATH/train/video_dataset_file.jsonl" ]] || { echo "ERROR: missing $DATASET_PATH/train/video_dataset_file.jsonl" >&2; exit 1; }'
++
++# Super-variant env tweaks: clear LD_LIBRARY_PATH to avoid host CUDA/NCCL libs
++# bleeding into the venv, switch the allocator to expandable_segments so the
++# 32B backbone fits without OOM during compile/decode.
++export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
++
++source "$(dirname "${BASH_SOURCE[0]}")/_sft_launcher_common.sh"
+diff --git a/examples/toml/sft_config/vision_sft_nano.toml b/examples/toml/sft_config/vision_sft_nano.toml
+index dbb192dc1a92ac85838c708130d44054b010c0fb..f68801231bfb2813954cc1c46fe5930939b131d5 100644
+--- a/examples/toml/sft_config/vision_sft_nano.toml
++++ b/examples/toml/sft_config/vision_sft_nano.toml
+@@ -14,7 +14,7 @@ name         = "vision_sft_nano"
+ wandb_mode   = "disabled"
+ 
+ [model]
+-max_num_tokens_after_packing = 45056
++max_num_tokens_after_packing = 45000
+ joint_attn_implementation    = "two_way"
+ precision                    = "bfloat16"                # was [model.parallelism].precision
+ 
+@@ -28,7 +28,7 @@ data_parallel_shard_degree      = -1                     # -1 = auto from WORLD_
+ data_parallel_replicate_degree  = 1
+ 
+ [model.compile]
+-enabled                         = true                   # was [model.parallelism].use_torch_compile
++enabled                         = true                  # was [model.parallelism].use_torch_compile
+ compile_dynamic                 = true
+ 
+ [model.activation_checkpointing]
+@@ -66,7 +66,18 @@ warm_up_steps      = [50]
+ distributed_parallelism = "fsdp"
+ grad_accum_iter         = 2
+ logging_iter            = 1
+-max_iter                = 500
++max_iter                = 10
++
++[trainer.profiling]
++enable_profiling = false
++profile_freq     = 8       # 每8步抓一次
++profile_warmup   = 3       # 前3步不抓
++target_ranks     = [0]     # 只抓rank 0
++record_shape     = true
++profile_memory   = false
++with_stack       = true
++with_modules     = true
++
+ 
+ [trainer.callbacks.compile_tokenizer]
+ compile_after_iterations = 3
+@@ -83,7 +94,7 @@ load_path            = "${oc.env:BASE_CHECKPOINT_PATH}"
+ save_iter            = 100
+ 
+ [dataloader_train]
+-max_sequence_length = 45056
++max_sequence_length = 45000
+ # Per-caption token cap before truncation. Structured-JSON captions run longer than
+ # dense prose (measured max ~1790 tokens), so keep headroom; raise it for longer captions.
+ max_caption_tokens = 2048
+diff --git a/examples/toml/sft_config/vision_sft_super_sft.toml b/examples/toml/sft_config/vision_sft_super_sft.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..c2c471251bd35d788fa98aa9d98b56c26b4ec3b3
+--- /dev/null
++++ b/examples/toml/sft_config/vision_sft_super_sft.toml
+@@ -0,0 +1,93 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++# vision_sft_super — Full SFT T2V/I2V/V2V on Qwen3-VL-32B (super tier).
++# Consumed by cosmos_framework.configs.toml_config.sft_config.load_experiment_from_toml.
++# Uses PackingDataLoader (no dataloader_train.seed slot — keep it omitted).
++
++[job]
++task         = "vfm"
++experiment   = "vision_sft_super"
++project      = "cosmos3"
++group        = "sft"
++name         = "vision_sft_super"
++wandb_mode   = "disabled"
++
++[model]
++max_num_tokens_after_packing = 45000
++joint_attn_implementation    = "two_way"
++precision                    = "bfloat16"                # was [model.parallelism].precision
++
++[model.ema]
++enabled         = true                                   # full SFT, EMA enabled
++rate            = 0.1
++iteration_shift = 0
++
++[model.parallelism]
++data_parallel_shard_degree      = -1                     # -1 = auto from WORLD_SIZE (matches legacy)
++data_parallel_replicate_degree  = 1
++context_parallel_shard_degree   = 2                      # super uses CP=2
++cfg_parallel_shard_degree       = 1
++
++[model.compile]
++enabled                         = true                   # full SFT enables compile (was use_torch_compile)
++compile_dynamic                 = true
++
++[model.activation_checkpointing]
++mode                = "full"
++save_ops_regex      = ["fmha"]
++preserve_rng_state  = true
++determinism_check   = "default"
++
++[model.tokenizer]
++vae_path = "${oc.env:WAN_VAE_PATH}"
++
++[optimizer]
++betas          = [0.9, 0.95]
++eps            = 1.0e-6
++fused          = true
++keys_to_select = [
++    "moe_gen",
++    "time_embedder",
++    "vae2llm",
++    "llm2vae",
++]
++lr             = 2.0e-5
++weight_decay   = 0                                       # int matches legacy YAML repr
++# lr_multipliers intentionally empty.
++
++[scheduler]
++cycle_lengths      = [1000]
++f_max              = [1.0]
++f_min              = [0.0]
++f_start            = [0.0]
++verbosity_interval = 0
++warm_up_steps      = [50]
++
++[trainer]
++distributed_parallelism = "fsdp"
++grad_accum_iter         = 2
++logging_iter            = 1
++max_iter                = 10
++
++[trainer.callbacks.compile_tokenizer]
++compile_after_iterations = 3
++enabled                  = false
++warmup_resolutions       = ["256", "480", "720"]
++
++[trainer.callbacks.grad_clip]
++clip_norm    = 0.1
++force_finite = true
++
++[checkpoint]
++keys_to_skip_loading = ["net_ema."]                     # only skip EMA for full SFT
++load_path            = "${oc.env:BASE_CHECKPOINT_PATH}"
++save_iter            = 100
++
++[dataloader_train]
++max_sequence_length = 45000
++# Per-caption token cap before truncation. Structured-JSON captions run longer than
++# dense prose (measured max ~1790 tokens), so keep headroom; raise it for longer captions.
++max_caption_tokens = 2048
++# max_samples_per_batch omitted (None — PackingDataLoader doesn't cap by count)
++# seed omitted — PackingDataLoader has no seed ctor kwarg
+diff --git a/scripts/generate_synthetic_data.py b/scripts/generate_synthetic_data.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4148cec3b845a5081e25355c257a6c830c317943
+--- /dev/null
++++ b/scripts/generate_synthetic_data.py
+@@ -0,0 +1,434 @@
++#!/usr/bin/env python3
++"""
++Generate 1000 synthetic training samples for Cosmos3 Nano.
++
++Samples include:
++- Synthetic MP4 videos (1920x1200, H.264, YUV420p, 30fps)
++- JSONL metadata
++- Caption files (json + txt)
++
++Frame counts: 4N+1 where N=20 → fixed 81 frames
++Text prompts: ~500-2000 tokens (2000-8000 English characters)
++"""
++
++import json
++import os
++import random
++import string
++import subprocess
++import time
++from multiprocessing import Pool, cpu_count
++from pathlib import Path
++
++# Configuration
++NUM_SAMPLES = 1000
++WIDTH = 1920
++HEIGHT = 1200
++FPS = 30
++NUM_FRAMES = 81  # Fixed: 4×20+1 = 81 frames
++MIN_CHARS = 2000  # ~500 tokens
++MAX_CHARS = 8000  # ~2000 tokens
++
++OUTPUT_DIR = Path("./examples/data/synthetic_1k_1920x1200")
++TRAIN_DIR = OUTPUT_DIR / "train"
++VIDEOS_DIR = TRAIN_DIR / "videos"
++CAPTIONS_DIR = TRAIN_DIR / "captions"
++
++# Word pools for generating descriptive text
++SCENES = [
++    "a vast ocean stretching to the horizon", "a dense forest with towering trees",
++    "an urban cityscape with modern buildings", "a serene mountain landscape",
++    "a bustling marketplace with colorful stalls", "a quiet library filled with ancient books",
++    "a futuristic space station orbiting Earth", "a tranquil garden with blooming flowers",
++    "a desert landscape with sand dunes", "a snowy tundra under northern lights",
++    "a vibrant coral reef underwater", "a medieval castle on a hilltop",
++    "a modern laboratory with advanced equipment", "a cozy cabin in the woods",
++    "a sunlit meadow with wildflowers", "a volcanic island with steam rising",
++]
++
++ACTIONS = [
++    "slowly rotating and revealing intricate details", "transitioning between different color palettes",
++    "displaying smooth geometric transformations", "showcasing particle effects flowing through space",
++    "rendering complex fractal patterns", "demonstrating fluid dynamics simulation",
++    "presenting layered transparency effects", "cycling through seasonal changes",
++    "morphing between abstract shapes", "revealing hidden patterns through light interaction",
++    "simulating atmospheric phenomena", "creating mesmerizing wave patterns",
++    "building structures from elemental components", "dissolving into fragments and reassembling",
++    "projecting holographic imagery", "generating procedural terrain features",
++]
++
++COLORS = [
++    "deep azure blue", "vibrant crimson red", "luminous golden yellow",
++    "rich emerald green", "soft lavender purple", "warm amber orange",
++    "cool teal cyan", "dark obsidian black", "pure pearl white",
++    "metallic silver gray", "dusty rose pink", "burnt sienna brown",
++    "neon electric green", "pastel coral pink", "midnight navy blue",
++    "iridescent rainbow hues",
++]
++
++OBJECTS = [
++    "crystalline geometric structures", "organic flowing shapes",
++    "interconnected network nodes", "layered transparent planes",
++    "swirling vortex patterns", "fractal tree branches",
++    "spiraling helix formations", "tessellated mosaic tiles",
++    "floating ethereal orbs", "angular prismatic surfaces",
++    "undulating wave forms", "recursive nested shapes",
++    "radial symmetry patterns", "linear gradient bands",
++    "scattered point clouds", "interlocking gear mechanisms",
++]
++
++QUALITIES = [
++    "with stunning clarity and precision", "creating a hypnotic visual rhythm",
++    "evoking a sense of infinite depth", "producing harmonious visual balance",
++    "generating dynamic contrast and movement", "maintaining consistent visual coherence",
++    "exhibiting subtle textural variations", "demonstrating remarkable spatial complexity",
++    "achieving photorealistic material rendering", "displaying smooth temporal transitions",
++    "incorporating multi-layered visual depth", "featuring precisely calibrated color gradients",
++    "showcasing advanced rendering techniques", "producing cinematically composed frames",
++    "revealing microscopic detail patterns", "establishing atmospheric visual mood",
++]
++
++TRANSITIONS = [
++    "The scene then transitions smoothly into", "Following this sequence",
++    "As the animation progresses", "In the next segment",
++    "Gradually shifting focus to", "The visual narrative continues with",
++    "Building upon the previous elements", "Expanding the visual scope to include",
++    "Introducing new compositional elements", "The perspective then shifts to reveal",
++    "Moving forward in the sequence", "The temporal flow carries us toward",
++    "Evolving the visual landscape into", "The imagery then develops into",
++    "Progressing through the visual journey", "The composition then unfolds to show",
++]
++
++
++def generate_caption_text(target_chars: int) -> str:
++    """Generate a descriptive English text of approximately target_chars characters."""
++    paragraphs = []
++    current_length = 0
++
++    while current_length < target_chars:
++        # Build a paragraph from random components
++        sentences = []
++        num_sentences = random.randint(3, 7)
++
++        for i in range(num_sentences):
++            if i == 0 and paragraphs:
++                # Use a transition for continuity
++                transition = random.choice(TRANSITIONS)
++                scene = random.choice(SCENES)
++                sentence = f"{transition} {scene}"
++            else:
++                scene = random.choice(SCENES)
++                action = random.choice(ACTIONS)
++                color = random.choice(COLORS)
++                obj = random.choice(OBJECTS)
++                quality = random.choice(QUALITIES)
++
++                templates = [
++                    f"The visualization presents {scene}, featuring {obj} rendered in {color} tones, {action} {quality}.",
++                    f"Within this frame, {obj} emerge against the backdrop of {scene}, colored in {color}, {action}.",
++                    f"A striking composition shows {scene} where {obj} in {color} are {action} {quality}.",
++                    f"The sequence captures {obj} {action} within {scene}, painted in {color} hues {quality}.",
++                    f"Rendered with {color} highlights, {obj} appear within {scene}, {action} {quality}.",
++                    f"The visual narrative unfolds across {scene}, presenting {obj} in {color}, {action}.",
++                ]
++                sentence = random.choice(templates)
++
++            sentences.append(sentence)
++            current_length += len(sentence) + 1
++
++            if current_length >= target_chars:
++                break
++
++        paragraph = " ".join(sentences)
++        paragraphs.append(paragraph)
++
++    text = " ".join(paragraphs)
++    # Trim to approximate target length
++    if len(text) > target_chars + 200:
++        # Find a sentence boundary near the target
++        end_pos = text.rfind(".", 0, target_chars + 100)
++        if end_pos > target_chars - 200:
++            text = text[:end_pos + 1]
++
++    return text
++
++
++def generate_video_ffmpeg(video_path: str, num_frames: int, seed: int):
++    """Generate a synthetic video using ffmpeg with random color/pattern."""
++    duration = num_frames / FPS
++
++    # Use different lavfi sources for variety
++    pattern_type = seed % 5
++    r = random.Random(seed)
++    color1 = "#{:06x}".format(r.randint(0, 0xFFFFFF))
++    color2 = "#{:06x}".format(r.randint(0, 0xFFFFFF))
++
++    if pattern_type == 0:
++        # Solid color with noise
++        filtergraph = (
++            f"color=c='{color1}':s={WIDTH}x{HEIGHT}:d={duration}:r={FPS},"
++            f"noise=alls=30:allf=t"
++        )
++    elif pattern_type == 1:
++        # Gradient with temporal variation
++        filtergraph = (
++            f"gradients=s={WIDTH}x{HEIGHT}:d={duration}:r={FPS}:"
++            f"c0='{color1}':c1='{color2}':speed=0.5"
++        )
++    elif pattern_type == 2:
++        # Mandelbrot fractal
++        filtergraph = (
++            f"mandelbrot=s={WIDTH}x{HEIGHT}:r={FPS}:end_pts={duration}/TB"
++        )
++    elif pattern_type == 3:
++        # Test source with color bars variation
++        filtergraph = (
++            f"testsrc2=s={WIDTH}x{HEIGHT}:d={duration}:r={FPS}"
++        )
++    else:
++        # Color with drawtext overlay
++        filtergraph = (
++            f"color=c='{color1}':s={WIDTH}x{HEIGHT}:d={duration}:r={FPS},"
++            f"geq=r='clip(r(X,Y)+random(1)*50,0,255)':"
++            f"g='clip(g(X,Y)+random(2)*50,0,255)':"
++            f"b='clip(b(X,Y)+random(3)*50,0,255)'"
++        )
++
++    cmd = [
++        "ffmpeg", "-y",
++        "-f", "lavfi", "-i", filtergraph,
++        "-c:v", "libx264",
++        "-preset", "ultrafast",
++        "-pix_fmt", "yuv420p",
++        "-frames:v", str(num_frames),
++        "-loglevel", "error",
++        video_path
++    ]
++
++    try:
++        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
++        return True
++    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
++        # Fallback: simple color video
++        fallback_cmd = [
++            "ffmpeg", "-y",
++            "-f", "lavfi", "-i",
++            f"color=c='{color1}':s={WIDTH}x{HEIGHT}:d={duration}:r={FPS}",
++            "-c:v", "libx264",
++            "-preset", "ultrafast",
++            "-pix_fmt", "yuv420p",
++            "-frames:v", str(num_frames),
++            "-loglevel", "error",
++            video_path
++        ]
++        try:
++            subprocess.run(fallback_cmd, check=True, capture_output=True, timeout=120)
++            return True
++        except Exception:
++            return False
++
++
++def generate_sample(args):
++    """Generate a single sample (video + metadata)."""
++    idx, seed = args
++    r = random.Random(seed)
++
++    uuid = f"synthetic_{idx:06d}_clip000"
++    num_frames = NUM_FRAMES
++    duration = num_frames / FPS
++
++    # Generate caption text (2000-8000 chars ≈ 500-2000 tokens)
++    target_chars = r.randint(MIN_CHARS, MAX_CHARS)
++    caption_text = generate_caption_text(target_chars)
++
++    # Video path
++    video_filename = f"{uuid}.mp4"
++    video_path = str(VIDEOS_DIR / video_filename)
++
++    # Generate video
++    success = generate_video_ffmpeg(video_path, num_frames, seed)
++    if not success:
++        return None
++
++    # Create caption directory and files
++    caption_dir = CAPTIONS_DIR / uuid
++    caption_dir.mkdir(parents=True, exist_ok=True)
++
++    # Write caption.txt
++    with open(caption_dir / "caption.txt", "w") as f:
++        f.write(caption_text)
++
++    # Caption JSON structure
++    duration_str = f"{duration:.1f}s"
++    caption_json = {
++        "fps": FPS,
++        "duration": duration_str,
++        "resolution": {"H": HEIGHT, "W": WIDTH},
++        "aspect_ratio": "8,5",
++        "style_medium": "Synthetic video",
++        "artistic_style": "Abstract",
++        "subjects": [{
++            "description": "Abstract synthetic scene",
++            "appearance_details": "Colorful patterns and gradients",
++            "relationship": "Main content",
++            "location": "Center",
++            "relative_size": "Large",
++            "orientation": "Forward-facing",
++            "pose": "Static",
++            "action": "Displaying patterns",
++            "state_changes": "Color shifting",
++            "number_of_subjects": 1,
++            "number_of_arms": 0,
++            "number_of_legs": 0,
++            "clothing": "",
++            "expression": "",
++            "gender": "",
++            "age": "",
++            "skin_tone_and_texture": "",
++            "facial_features": ""
++        }],
++        "background_setting": "Solid color backdrop",
++        "lighting": {
++            "conditions": "Neutral",
++            "direction": "Uniform",
++            "shadows": "None",
++            "illumination_effect": "Even"
++        },
++        "aesthetics": {
++            "composition": "Centered",
++            "color_scheme": "Vibrant",
++            "mood_atmosphere": "Neutral",
++            "patterns": "Geometric"
++        },
++        "cinematography": {
++            "camera_motion": "Static",
++            "framing": "Wide shot",
++            "camera_angle": "Eye-level",
++            "depth_of_field": "Deep",
++            "focus": "Sharp",
++            "lens_focal_length": "35mm"
++        },
++        "actions": [{"description": "Displaying animated patterns"}],
++        "segments": [{"start_time": "0s", "end_time": duration_str, "description": "Full video segment"}],
++        "text_and_signage_elements": [],
++        "transitions": [],
++        "temporal_caption": caption_text,
++        "audio_description": ""
++    }
++
++    # Write caption.json
++    with open(caption_dir / "caption.json", "w") as f:
++        json.dump(caption_json, f, indent=2)
++
++    # JSONL entry
++    jsonl_entry = {
++        "uuid": uuid,
++        "duration": round(duration, 4),
++        "width": WIDTH,
++        "height": HEIGHT,
++        "vision_path": f"videos/{video_filename}",
++        "t2w_windows": [{
++            "start_frame": 0,
++            "end_frame": num_frames - 1,
++            "temporal_interval": 1,
++            "caption": caption_text,
++            "caption_json": caption_json
++        }]
++    }
++
++    return {
++        "jsonl_entry": jsonl_entry,
++        "num_frames": num_frames,
++        "caption_length": len(caption_text),
++        "idx": idx
++    }
++
++
++def main():
++    print("=" * 60)
++    print("Synthetic Dataset Generator for Cosmos3 Nano")
++    print("=" * 60)
++    print(f"  Samples: {NUM_SAMPLES}")
++    print(f"  Resolution: {WIDTH}x{HEIGHT}")
++    print(f"  FPS: {FPS}")
++    print(f"  Fixed frames: {NUM_FRAMES}")
++    print(f"  Output: {OUTPUT_DIR}")
++    print("=" * 60)
++
++    # Create directories
++    VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
++    CAPTIONS_DIR.mkdir(parents=True, exist_ok=True)
++
++    # Generate seeds for reproducibility
++    master_seed = 42
++    r = random.Random(master_seed)
++    seeds = [(i, r.randint(0, 2**31)) for i in range(NUM_SAMPLES)]
++
++    # Use multiprocessing for speed
++    num_workers = 4
++    print(f"\nUsing {num_workers} worker processes...")
++    print(f"Starting generation at {time.strftime('%H:%M:%S')}\n")
++
++    start_time = time.time()
++    results = []
++    completed = 0
++    failed = 0
++
++    with Pool(processes=num_workers) as pool:
++        for result in pool.imap_unordered(generate_sample, seeds, chunksize=10):
++            if result is not None:
++                results.append(result)
++                completed += 1
++            else:
++                failed += 1
++
++            total = completed + failed
++            if total % 50 == 0 or total == NUM_SAMPLES:
++                elapsed = time.time() - start_time
++                rate = total / elapsed if elapsed > 0 else 0
++                eta = (NUM_SAMPLES - total) / rate if rate > 0 else 0
++                print(f"  Progress: {total}/{NUM_SAMPLES} "
++                      f"({completed} ok, {failed} failed) "
++                      f"| {rate:.1f} samples/s | ETA: {eta:.0f}s")
++
++    elapsed_total = time.time() - start_time
++
++    # Sort results by index for consistent JSONL ordering
++    results.sort(key=lambda x: x["idx"])
++
++    # Write JSONL file
++    jsonl_path = TRAIN_DIR / "video_dataset_file.jsonl"
++    with open(jsonl_path, "w") as f:
++        for result in results:
++            f.write(json.dumps(result["jsonl_entry"]) + "\n")
++
++    # Statistics
++    caption_lengths = []
++    for result in results:
++        caption_lengths.append(result["caption_length"])
++
++    avg_caption_len = sum(caption_lengths) / len(caption_lengths) if caption_lengths else 0
++    min_caption_len = min(caption_lengths) if caption_lengths else 0
++    max_caption_len = max(caption_lengths) if caption_lengths else 0
++
++    print("\n" + "=" * 60)
++    print("GENERATION COMPLETE")
++    print("=" * 60)
++    print(f"  Total time: {elapsed_total:.1f}s ({elapsed_total/60:.1f} min)")
++    print(f"  Successful samples: {completed}")
++    print(f"  Failed samples: {failed}")
++    print(f"\n  Frame count: {NUM_FRAMES} frames (N=20, {NUM_FRAMES/FPS:.2f}s) x {completed} samples")
++    print(f"\n  Caption text statistics:")
++    print(f"    Average length: {avg_caption_len:.0f} chars (~{avg_caption_len/4:.0f} tokens)")
++    print(f"    Min length: {min_caption_len} chars (~{min_caption_len/4:.0f} tokens)")
++    print(f"    Max length: {max_caption_len} chars (~{max_caption_len/4:.0f} tokens)")
++    print(f"\n  Output files:")
++    print(f"    JSONL: {jsonl_path}")
++    print(f"    Videos: {VIDEOS_DIR}/ ({completed} files)")
++    print(f"    Captions: {CAPTIONS_DIR}/ ({completed} dirs)")
++    print("=" * 60)
++
++
++if __name__ == "__main__":
++    main()
++
