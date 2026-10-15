@@ -331,6 +331,7 @@ def build_config(args: argparse.Namespace) -> ConfigContainer:
     cfg.ddp.average_in_collective = True
     cfg.ddp.data_parallel_sharding_strategy = "optim_grads_params"
     cfg.ddp.use_distributed_optimizer = True
+    cfg.ddp.nccl_ub = os.getenv("ENABLE_COPY_ENGINE", "0") == "1"
 
     # Fixed-length mock VLM dataset
     cfg.dataset = MockPerfVLMProvider(
@@ -368,6 +369,26 @@ def build_config(args: argparse.Namespace) -> ConfigContainer:
     # -- Apply advanced features --
     if args.enable_sp or args.enable_tp_overlap:
         cfg.model.sequence_parallel = True
+
+    # GDN linear CP mode (chunkwise/headwise). "legacy" is the historical recipe label for
+    # the zigzag + all-to-all path, which upstream Megatron calls "headwise"; normalize it so
+    # Megatron's TransformerConfig only ever sees community values (it rejects "legacy").
+    if args.linear_cp_mode is not None:
+        cfg.model.linear_cp_mode = (
+            "headwise" if args.linear_cp_mode == "legacy" else args.linear_cp_mode
+        )
+        logger.info(f"Set linear_cp_mode={cfg.model.linear_cp_mode}")
+
+    if args.cross_entropy_fusion_impl is not None:
+        cfg.model.cross_entropy_fusion_impl = args.cross_entropy_fusion_impl
+        logger.info(
+            f"cross_entropy_fusion_impl overridden to '{args.cross_entropy_fusion_impl}' "
+            f"(cross_entropy_loss_fusion={cfg.model.cross_entropy_loss_fusion})"
+        )
+
+    if args.disable_cross_entropy_fusion:
+        cfg.model.cross_entropy_loss_fusion = False
+        logger.info("cross_entropy_loss_fusion forced off by --disable-cross-entropy-fusion")
 
     if args.enable_tp_overlap:
         enable_tp_overlap(cfg)
@@ -613,6 +634,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Number of vision layers to offload (default: num_vision_layers - 1)",
     )
+    feat.add_argument(
+        "--linear-cp-mode",
+        type=str,
+        default=None,
+        choices=[None, "chunkwise", "headwise", "legacy"],
+        help="GDN CP strategy: chunkwise (FLA cp_context, no all-to-all), headwise (Ulysses), legacy (zigzag+a2a)",
+    )
+    feat.add_argument(
+        "--cross-entropy-fusion-impl",
+        type=str,
+        choices=["native", "te"],
+        default=None,
+        help="Override model.cross_entropy_fusion_impl. 'te' uses TransformerEngine's "
+        "triton cross entropy, which keeps logits in bf16 and saves only the in-place "
+        "softmaxed logits for backward instead of several fp32 logits-sized buffers.",
+    )
+    feat.add_argument(
+        "--disable-cross-entropy-fusion",
+        action="store_true",
+        help="Force model.cross_entropy_loss_fusion=False as well at CP=1. "
+        "Diagnostic control for the CP sweep: CP>1 already disables fusion, "
+        "so this separates the fusion loss from the CP cost.",
+    )
     feat.add_argument("--enable-fp8", action="store_true", help="FP8 blockwise (Hopper+)")
     feat.add_argument(
         "--enable-fsdp",
@@ -633,13 +677,57 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _apply_hydra_overrides(args: argparse.Namespace, overrides: list[str]) -> None:
+    """Apply Hydra-style key=value overrides to an argparse Namespace.
+
+    Keys must match argparse dest names (e.g. ``seq_length``, ``enable_sp``,
+    ``hf_model``).  Values are coerced to the type of the current default.
+    """
+    for override in overrides:
+        if "=" not in override:
+            raise argparse.ArgumentError(None, f"Invalid override (expected key=value): {override}")
+        key, value = override.split("=", 1)
+        if not hasattr(args, key):
+            raise argparse.ArgumentError(None, f"Unknown config key: {key}")
+        current = getattr(args, key)
+
+        if isinstance(current, list):
+            if value.startswith("[") and value.endswith("]"):
+                setattr(args, key, [v.strip().strip('"').strip("'") for v in value[1:-1].split(",")])
+            else:
+                setattr(args, key, list(current) + [value])
+        elif isinstance(current, bool):
+            setattr(args, key, value.lower() in ("true", "1", "yes"))
+        elif isinstance(current, int):
+            setattr(args, key, int(value))
+        elif isinstance(current, float):
+            setattr(args, key, float(value))
+        elif current is None:
+            v_lower = value.lower()
+            if v_lower in ("true", "false", "yes", "no"):
+                setattr(args, key, v_lower in ("true", "1", "yes"))
+            else:
+                try:
+                    if "." in value:
+                        setattr(args, key, float(value))
+                    else:
+                        setattr(args, key, int(value))
+                except ValueError:
+                    setattr(args, key, value)
+        else:
+            setattr(args, key, type(current)(value))
+
+
 def main() -> None:
     """Entry point for the standard VLM benchmark."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args, cli_overrides = parser.parse_known_args()
+    if cli_overrides:
+        _apply_hydra_overrides(args, cli_overrides)
     cfg = build_config(args)
     pretrain(cfg, forward_step, callbacks=[MyStepCallback()])
 

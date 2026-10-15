@@ -27,7 +27,7 @@ index dba17f50bc1f5dc4f8691e3c1a0f24295c4132f2..bc47740306ea6b61d5ca150572ad209e
 -*.png filter=lfs diff=lfs merge=lfs -text
 -*.tiff filter=lfs diff=lfs merge=lfs -text
 -*.bmp filter=lfs diff=lfs merge=lfs -text
-+# NOTE: LFS filters removed. The internal gitlab mirror does not host LFS
++# NOTE: LFS filters removed. The upstream remote does not host LFS
 +# objects, which caused "Smudge error: Object does not exist [404]" on
 +# clone/checkout. Files previously tracked via LFS will be checked out as
 +# their pointer text. Do not re-add `filter=lfs` unless the remote actually
@@ -566,9 +566,9 @@ index dbb192dc1a92ac85838c708130d44054b010c0fb..f68801231bfb2813954cc1c46fe59309
 +
 +[trainer.profiling]
 +enable_profiling = false
-+profile_freq     = 8       # 每8步抓一次
-+profile_warmup   = 3       # 前3步不抓
-+target_ranks     = [0]     # 只抓rank 0
++profile_freq     = 8       # profile every 8 steps
++profile_warmup   = 3       # skip first 3 steps
++target_ranks     = [0]     # only profile rank 0
 +record_shape     = true
 +profile_memory   = false
 +with_stack       = true

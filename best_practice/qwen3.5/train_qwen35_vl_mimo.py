@@ -413,6 +413,25 @@ def _build_mimo_provider(
 
     _apply_moe_config(standard_provider, parallelism_config, args)
 
+    # GDN linear CP mode (chunkwise/headwise). "legacy" is the historical recipe label for
+    # the zigzag + all-to-all path, which upstream Megatron calls "headwise"; normalize it so
+    # Megatron's TransformerConfig only ever sees community values (it rejects "legacy").
+    if args.linear_cp_mode is not None:
+        linear_cp_mode = "headwise" if args.linear_cp_mode == "legacy" else args.linear_cp_mode
+        standard_provider.linear_cp_mode = linear_cp_mode
+        logger.info(f"Set linear_cp_mode={linear_cp_mode}")
+
+    # GDN fused pre-gated-delta-rule (streamed Triton). Perf-only; requires causal-conv1d and is
+    # non-deterministic, so it is off by default and never affects the validated unfused path.
+    if args.gdn_fused_pre_gdr:
+        if not hasattr(standard_provider, "gdn_pre_gated_delta_rule_fusion"):
+            raise RuntimeError(
+                "--gdn-fused-pre-gdr needs the gdn_pre_gated_delta_rule_fusion field; apply "
+                "dockers/patches/qwen35-gdn-fused-pre-gdr.patch and rebuild the image."
+            )
+        standard_provider.gdn_pre_gated_delta_rule_fusion = True
+        logger.info("Set gdn_pre_gated_delta_rule_fusion=True")
+
     provider = MegatronMIMOProvider.from_standard_provider(
         standard_provider=standard_provider,
         megatron_mimo_parallelism_config=parallelism_config,
@@ -442,6 +461,9 @@ def build_config(
     # mbs_total = mbs * language_dp samples per microbatch and slices by language_dp.
     mbs_total = args.mbs * language_dp
     gbs = args.gbs if args.gbs is not None else mbs_total * args.ga
+    enable_copy_engine = os.getenv("ENABLE_COPY_ENGINE", "0") == "1"
+    if enable_copy_engine and args.no_nccl_ub:
+        raise ValueError("--no-nccl-ub cannot be used with ENABLE_COPY_ENGINE=1")
 
     optimizer_cfg, scheduler_cfg = distributed_fused_adam_with_cosine_annealing(
         lr_warmup_iters=200,
@@ -508,6 +530,7 @@ def build_config(
             average_in_collective=True,
             data_parallel_sharding_strategy="optim_grads_params",
             use_distributed_optimizer=True,
+            nccl_ub=enable_copy_engine,
         ),
     )
     cfg.mixed_precision = "bf16_mixed"
@@ -590,6 +613,23 @@ def build_config(
         model_provider.vision_activation_offload = True
         if args.vision_offload_num_layers is not None:
             model_provider.vision_activation_offload_num_layers = args.vision_offload_num_layers
+
+    if args.cross_entropy_fusion_impl is not None:
+        model_provider.standard_provider.cross_entropy_fusion_impl = (
+            args.cross_entropy_fusion_impl
+        )
+        logger.info(
+            "cross_entropy_fusion_impl overridden to "
+            f"'{args.cross_entropy_fusion_impl}' "
+            "(cross_entropy_loss_fusion="
+            f"{model_provider.standard_provider.cross_entropy_loss_fusion})"
+        )
+
+    if args.disable_cross_entropy_fusion:
+        model_provider.standard_provider.cross_entropy_loss_fusion = False
+        logger.info(
+            "cross_entropy_loss_fusion forced off by --disable-cross-entropy-fusion"
+        )
 
     # -- CP > 1 required configuration --
     language_cp = language_parallelism.context_parallel_size if language_parallelism else 1
@@ -747,8 +787,27 @@ def _build_parser() -> argparse.ArgumentParser:
     # Advanced features
     feat = p.add_argument_group("advanced features")
     feat.add_argument("--enable-sp", action="store_true", help="Sequence Parallel")
+    feat.add_argument(
+        "--linear-cp-mode",
+        type=str,
+        default=None,
+        choices=[None, "chunkwise", "headwise", "legacy"],
+        help="GDN CP strategy: chunkwise (FLA cp_context, no all-to-all), headwise (Ulysses), legacy (zigzag+a2a)",
+    )
+    feat.add_argument(
+        "--gdn-fused-pre-gdr",
+        action="store_true",
+        help="Enable the streamed fused pre-gated-delta-rule Triton path. Requires causal-conv1d "
+        "(cpp_functions.causal_conv1d_bwd_function). Non-deterministic; mutually exclusive with "
+        "deterministic_mode. Perf-only: numerics differ slightly from the unfused path.",
+    )
     feat.add_argument("--enable-tp-overlap", action="store_true", help="TP comm overlap (auto-enables SP)")
     feat.add_argument("--enable-grad-overlap", action="store_true", help="Overlap grad-reduce + param-gather")
+    feat.add_argument(
+        "--no-nccl-ub",
+        action="store_true",
+        help="Keep NCCL userbuffers disabled; incompatible with ENABLE_COPY_ENGINE=1.",
+    )
     feat.add_argument("--enable-full-recompute", action="store_true")
     feat.add_argument("--enable-recompute", action="store_true")
     feat.add_argument(
@@ -774,6 +833,23 @@ def _build_parser() -> argparse.ArgumentParser:
                        "Automatically disables activation recomputation on the vision encoder.")
     feat.add_argument("--vision-offload-num-layers", type=int, default=None,
                        help="Number of vision encoder layers to offload (default: num_layers - 1).")
+    feat.add_argument(
+        "--cross-entropy-fusion-impl",
+        type=str,
+        choices=["native", "te"],
+        default=None,
+        help="Override model.cross_entropy_fusion_impl. 'te' uses TransformerEngine's "
+        "triton cross entropy, which keeps logits in bf16 and saves only the in-place "
+        "softmaxed logits for backward instead of several fp32 logits-sized buffers. "
+        "Ignored when language CP > 1 (fusion is disabled there).",
+    )
+    feat.add_argument(
+        "--disable-cross-entropy-fusion",
+        action="store_true",
+        help="Force model.cross_entropy_loss_fusion=False as well at CP=1. "
+        "Diagnostic control for the CP sweep: CP>1 already disables fusion, "
+        "so this separates the fusion loss from the CP cost.",
+    )
     feat.add_argument("--enable-fp8", action="store_true")
     feat.add_argument(
         "--cuda-graph-scope",
@@ -911,13 +987,74 @@ def _patch_deepep_debug_logging(max_calls: int = 4) -> None:
         logger.info(f"[DeepEP DEBUG] Patched fused_dispatch/fused_combine (logging first {max_calls} calls)")
 
 
+def _apply_hydra_overrides(args: argparse.Namespace, overrides: list[str]) -> None:
+    """Apply Hydra-style key=value overrides to an argparse Namespace.
+
+    Keys must match argparse dest names (e.g. ``seq_length``, ``enable_sp``,
+    ``hf_model``).  Values are coerced to the type of the current default.
+    ``component`` can be repeated to build the component list.
+    """
+    seen_keys: set[str] = set()
+    for override in overrides:
+        if "=" not in override:
+            raise argparse.ArgumentError(None, f"Invalid override (expected key=value): {override}")
+        key, _ = override.split("=", 1)
+        seen_keys.add(key)
+
+    # If the user overrides --component, replace the list built by the script.
+    if "component" in seen_keys and args.component is not None:
+        args.component.clear()
+
+    for override in overrides:
+        key, value = override.split("=", 1)
+        if not hasattr(args, key):
+            raise argparse.ArgumentError(None, f"Unknown config key: {key}")
+        current = getattr(args, key)
+
+        if key == "component":
+            if value.startswith("[") and value.endswith("]"):
+                setattr(args, key, [v.strip().strip('"').strip("'") for v in value[1:-1].split(",")])
+            else:
+                components = list(args.component) if args.component is not None else []
+                components.append(value)
+                setattr(args, key, components)
+        elif isinstance(current, list):
+            if value.startswith("[") and value.endswith("]"):
+                setattr(args, key, [v.strip().strip('"').strip("'") for v in value[1:-1].split(",")])
+            else:
+                setattr(args, key, list(current) + [value])
+        elif isinstance(current, bool):
+            setattr(args, key, value.lower() in ("true", "1", "yes"))
+        elif isinstance(current, int):
+            setattr(args, key, int(value))
+        elif isinstance(current, float):
+            setattr(args, key, float(value))
+        elif current is None:
+            v_lower = value.lower()
+            if v_lower in ("true", "false", "yes", "no"):
+                setattr(args, key, v_lower in ("true", "yes"))
+            else:
+                try:
+                    if "." in value:
+                        setattr(args, key, float(value))
+                    else:
+                        setattr(args, key, int(value))
+                except ValueError:
+                    setattr(args, key, value)
+        else:
+            setattr(args, key, type(current)(value))
+
+
 def main() -> None:
     """Entry point for the MIMO benchmark."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args, cli_overrides = parser.parse_known_args()
+    if cli_overrides:
+        _apply_hydra_overrides(args, cli_overrides)
 
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     torch.cuda.set_device(local_rank)

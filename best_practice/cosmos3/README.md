@@ -1,12 +1,12 @@
 # Cosmos3 Nano / Super M890 Performance Recipe
 
-This directory contains only the reproduction instructions. The actual training entry points, TOML configurations, and dependencies are added to the image by `Dockerfile.M890.Cosmos3` and `cosmos3.patch`.
+This directory contains only the reproduction instructions. The actual training entry points, TOML configurations, and dependencies are added to the image by `Dockerfile.Cosmos3` and `cosmos3.patch`.
 
 ## Baseline
 
 - Source: <https://github.com/NVIDIA/cosmos-framework.git>
 - Commit: `300faa14daab3910be9d303c31708a0a1d6e4371`
-- Dockerfile: `dockers/Dockerfile.M890.Cosmos3`
+- Dockerfile: `dockers/Dockerfile.Cosmos3`
 - Patch: `dockers/patches/cosmos3.patch`
 - Hardware: One node with 8 M890 144 GiB cards
 - Input: 1,000 synthetic videos at 1920×1200 resolution with 81 frames each
@@ -29,7 +29,7 @@ cd /path/to/ppu-train-recipes
 export BASE_IMAGE=pkg.flytiger-eco.com/docker_release/pytorch:sdk2.2.0-2.10.0-ubuntu24.04-cuda13.0-py312-20261001
 DOCKER_BUILDKIT=0 docker build --network=host \
   --build-arg BASE_IMAGE="$BASE_IMAGE" \
-  -f dockers/Dockerfile.M890.Cosmos3 \
+  -f dockers/Dockerfile.Cosmos3 \
   -t ppu-cosmos3:M890 .
 ```
 
