@@ -110,7 +110,7 @@ export MEGATRON_VISION_FIXED_LENGTH_ATTENTION=1;
 export MIMO_DEBUG="${MIMO_DEBUG:-1}";
 export PYTORCH_ENABLE_PPU_ELEMENTWISE_OPT=1;
 
-BEST_LANG="${BEST_LANG:-language=tp=2,cp=1,ep=1,dp=8,etp=1,pp=1,rank_offset=0}"
+BEST_LANG="${BEST_LANG:-language=tp=1,cp=1,ep=1,dp=8,etp=1,pp=1,rank_offset=0}"
 BEST_IMG="${BEST_IMG:-images=tp=1,cp=1,dp=8,rank_offset=0}"
 IMAGE_SIZE_W="${IMAGE_SIZE_W:-1920}"
 IMAGE_SIZE_H="${IMAGE_SIZE_H:-1080}"
