@@ -1,0 +1,111 @@
+# Build arguments (optional): pass these if your host needs a proxy to reach GitHub.
+# Example:
+#   docker build --network host \
+#     --build-arg GIT_PROXY=http://127.0.0.1:18888 \
+#     -f dockers/Dockerfile.Qwen35 -t ppu-qwen35:M890 .
+ARG GIT_PROXY=""
+ARG GIT_SSL_VERIFY="true"
+
+FROM pkg.flytiger-eco.com/docker_release/llm:sdk2.2.0-pytorch2.10.0-ubuntu24.04-cuda13.0-py312-20261008
+
+# M890 variant: upstream Megatron-Bridge at c9ab9cc plus POC changes from
+# ppu_frameworks/Megatron-Bridge poc_release (applied as a patch below).
+
+# Re-declare build args so they are available in this stage.
+ARG GIT_PROXY
+ARG GIT_SSL_VERIFY
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+WORKDIR /workspace
+
+# The base image rewrites github.com to an unreachable mirror that is not
+# reachable here. Remove its gitconfig and apply the caller's proxy settings.
+RUN rm -f /root/.gitconfig && \
+    if [ -n "$GIT_PROXY" ]; then \
+        git config --global http.proxy "$GIT_PROXY" && \
+        git config --global https.proxy "$GIT_PROXY"; \
+    fi && \
+    git config --global http.sslVerify "$GIT_SSL_VERIFY" && \
+    git config --global http.version HTTP/1.1 && \
+    git config --global http.postBuffer 524288000 && \
+    git config --global core.compression 0 && \
+    git clone https://github.com/NVIDIA-NeMo/Megatron-Bridge.git /workspace/Megatron-Bridge
+
+WORKDIR /workspace/Megatron-Bridge
+
+COPY dockers/patches/qwen35.patch /tmp/qwen35.patch
+COPY dockers/patches/qwen35-gdn-chunkwise-cp.patch /tmp/qwen35-gdn-chunkwise-cp.patch
+COPY dockers/patches/qwen35-gdn-fused-pre-gdr.patch /tmp/qwen35-gdn-fused-pre-gdr.patch
+
+# qwen35.patch updates the Megatron-LM submodule pointer (930bb6f6 -> de6305c0).
+# qwen35-gdn-chunkwise-cp.patch is the single combined Megatron-LM backport: it ports
+# upstream dev's GDN chunkwise context-parallel path verbatim (ssm/gated_delta_net package,
+# context_parallel_layout/, ssm/utils.py, packed_seq_params + TransformerConfig fields and the
+# matching TE kept_packed_seq_params discards) AND folds in the head-pack all-to-all
+# optimization on the headwise path.
+# qwen35-gdn-fused-pre-gdr.patch adds the single file the combined patch's gdn.py dispatch
+# expects but does not carry: megatron/core/fusions/fused_pre_gated_delta_rule.py (verbatim from
+# dev commit b001daca9, the same commit the backported gdn.py came from). It is a pure new-file
+# addition, so it applies on the de6305c0+combined tree without extra objects. This enables the
+# gdn_pre_gated_delta_rule_fusion path (off by default), which additionally requires the
+# causal-conv1d C++ backend (causal_conv1d.cpp_functions.causal_conv1d_bwd_function). That
+# backend is NOT built here: no PPU wheel exists, and building v1.6.2.post1 from source crashes
+# the M890 toolchain (llc rejects the <4 x i32> bitcast of the shared-memory exchange buffer in
+# causal_conv1d_bwd.cu; v1.6.0..v1.7.0 share that code, and pre-1.6 has no cpp_functions module).
+# GDN itself is unaffected -- it uses the Triton causal_conv1d from flash-linear-attention -- and
+# gdn.py asserts the backend is importable when the fusion is enabled.
+# Use a shallow submodule clone plus retries to avoid long/incomplete downloads.
+RUN git checkout c9ab9cc124a055392927eee3b2220bc0049caa18 \
+    && git apply /tmp/qwen35.patch \
+    && rm /tmp/qwen35.patch \
+    && (for i in 1 2 3; do \
+          git submodule update --init --depth 1 --progress && break; \
+          echo "[retry $i/3] submodule update failed, retrying..."; \
+          rm -rf 3rdparty/Megatron-LM; \
+          sleep 15; \
+        done) \
+    && git -C 3rdparty/Megatron-LM fetch origin de6305c0ae1e78e04929b7b6d55910ae71046ae8 \
+    && git -C 3rdparty/Megatron-LM checkout de6305c0ae1e78e04929b7b6d55910ae71046ae8 \
+    && git -C 3rdparty/Megatron-LM apply /tmp/qwen35-gdn-chunkwise-cp.patch \
+    && rm /tmp/qwen35-gdn-chunkwise-cp.patch \
+    && git -C 3rdparty/Megatron-LM apply /tmp/qwen35-gdn-fused-pre-gdr.patch \
+    && rm /tmp/qwen35-gdn-fused-pre-gdr.patch
+
+# Pin pyarrow: newer pyarrow hard-requires numpy>=2 at import, but the base
+# image ships numpy 1.26 (local empirical check: pyarrow 21 imports fine on 1.26).
+#
+# --no-build-isolation on the Megatron-Bridge editable install: its
+# pyproject build-system.requires contains "torch", so with isolation pip
+# silently downloads torch + the full nvidia-* closure (several GB) into a
+# throwaway env. The base image already ships torch (the PPU build) and the
+# build deps are installed explicitly below instead.
+RUN python -m pip install --upgrade pip \
+    && python -m pip install \
+        nvidia-modelopt==0.42.0 \
+        transformers==5.3.0 \
+        peft==0.19.1 \
+        diffusers==0.38.0 \
+        huggingface_hub==1.13.0 \
+        datasets==4.8.5 \
+        pyarrow==21.0.0 \
+        megatron-energon==6.0.1 \
+        nvidia-resiliency-ext \
+        qwen-vl-utils==0.0.14 \
+        omegaconf \
+        hydra-core \
+        "fsspec>=2024.3.0" \
+        pybind11 \
+        setuptools \
+        wheel \
+    && python -m pip install -e ./3rdparty/Megatron-LM \
+    && python -m pip install -e . --no-deps --no-build-isolation \
+    && python -m pip install flash_linear_attention==0.4.1 -i https://pkg.flytiger-eco.com/artifactory/api/pypi/pypi_index/simple \
+    && python -c "import megatron.bridge, megatron.energon, transformers, peft, diffusers, huggingface_hub, datasets, omegaconf, hydra, fsspec; print('megatron-bridge + core deps import ok')"
+
+CMD ["/bin/bash"]

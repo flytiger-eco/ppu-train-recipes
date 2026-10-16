@@ -1,0 +1,100 @@
+FROM pkg.flytiger-eco.com/docker_release/llm:sdk2.2.0-pytorch2.10.0-ubuntu24.04-cuda13.0-py312-20261008
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+WORKDIR /workspace
+
+# Base image has pre-configured git redirect config, here we restore github.com direct access
+RUN rm -f /root/.gitconfig
+
+# ── Megatron-Bridge + Megatron-LM ───────────────────────────────────────────
+RUN git clone --depth 1 --branch main \
+        https://github.com/NVIDIA-NeMo/Megatron-Bridge.git /workspace/Megatron-Bridge \
+    && git -C /workspace/Megatron-Bridge fetch --depth 1 origin ece66187628007544c33fcff280089b61d5c758a \
+    && git -C /workspace/Megatron-Bridge checkout ece66187628007544c33fcff280089b61d5c758a
+
+WORKDIR /workspace/Megatron-Bridge
+
+COPY dockers/patches/qwen3_omni.patch /tmp/qwen3_omni.patch
+
+RUN if [ -s /tmp/qwen3_omni.patch ]; then git apply /tmp/qwen3_omni.patch; fi \
+    && rm /tmp/qwen3_omni.patch \
+    && git submodule update --init --recursive \
+    && git -C 3rdparty/Megatron-LM fetch --depth 1 origin c9b53d0a87cb926f47115259593ecfeb351ca29f \
+    && git -C 3rdparty/Megatron-LM checkout c9b53d0a87cb926f47115259593ecfeb351ca29f
+
+# ── Dependency installation (uv + uv.lock, consistent with the working environment) ──
+RUN pip install uv -i https://mirrors.aliyun.com/pypi/simple/
+
+# From uv.lock generate wheels.txt (excluding packages already in PPU base image)
+RUN python3 - <<'PYEOF'
+import tomllib
+lock = tomllib.load(open("uv.lock", "rb"))
+skip_exact = {"torch", "torchvision", "torchaudio", "triton", "flash-attn",
+              "flashinfer-python", "flashinfer-cubin"}
+skip_prefix = ("transformer-engine", "nvidia-", "pywin", "win32", "win-amd64")
+skip_also = {"mamba-ssm", "causal-conv1d", "tilelang", "cuda-tile", "nvdlfw-inspect"}
+
+pkgs, seen = [], set()
+for p in lock["package"]:
+    name, ver = p["name"], p.get("version")
+    src = p.get("source") or {}
+    if any(k in src for k in ("git", "editable", "virtual")):
+        continue
+    low = name.lower()
+    if not ver or low in seen or low in skip_exact or low in skip_also or low.startswith(skip_prefix):
+        continue
+    seen.add(low)
+    pkgs.append(f"{name}=={ver}")
+open("/tmp/wheels.txt", "w").write("\n".join(pkgs) + "\n")
+print(f"packages: {len(pkgs)}")
+PYEOF
+
+# Batch install dependencies from wheels.txt
+RUN uv pip install --system -r /tmp/wheels.txt \
+        --no-build-isolation --index-strategy unsafe-best-match \
+        --index https://mirrors.aliyun.com/pypi/simple/ \
+    && rm /tmp/wheels.txt
+
+# Editable install + data pipeline + nvidia pure Python packages
+RUN pip install pybind11 \
+    && uv pip install --system -e 3rdparty/Megatron-LM --no-deps --no-build-isolation \
+    && uv pip install --system -e . --no-deps --no-build-isolation \
+    && uv pip install --system --index-strategy unsafe-best-match \
+        --index https://mirrors.aliyun.com/pypi/simple/ \
+        'qwen-omni-utils[decord]' nvidia-modelopt nvidia-resiliency-ext \
+    && uv --no-config pip install --system --no-deps \
+        --default-index https://mirrors.aliyun.com/pypi/simple/ av==13.1.0
+
+# Uninstall torchcodec (PPU incompatible) + decord patch
+RUN uv pip uninstall --system torchcodec 2>/dev/null; \
+    VP=$(python -c "import transformers, os; print(os.path.join(os.path.dirname(transformers.__file__), 'video_processing_utils.py'))") \
+    && python - "$VP" <<'PYEOF'
+import re, shutil, sys
+p = sys.argv[1]
+s = open(p).read()
+if 'backend = "decord"' in s and 'backend = "torchcodec"' not in s:
+    print("Already decord, skip"); raise SystemExit(0)
+shutil.copy2(p, p + ".orig")
+# Change torchcodec and torchvision both to decord
+s = re.sub(r'backend\s*=\s*"torch(codec|vision)"', 'backend = "decord"', s)
+open(p, "w").write(s)
+print("decord patch ok")
+PYEOF
+
+# Verification
+RUN python3 - <<'EOF'
+import torch, transformers, megatron.bridge
+import megatron.core as c
+print('torch', torch.__version__, torch.__file__)
+print('tfms ', transformers.__version__)
+print('core ', c.__file__)
+print('devs ', torch.cuda.device_count())
+EOF
+
+CMD ["/bin/bash"]

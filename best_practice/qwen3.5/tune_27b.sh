@@ -3,9 +3,10 @@
 # MFU tuning for Qwen3.5-VL 27B (dense) — standard VLM path
 #
 # Usage:
-#   bash tune_27b_vlm.sh
+#   bash tune_27b.sh
 #
-# This is the standard-path counterpart of tune_27b_mimo.sh.
+# Uses the standard VLM training path (pretrain) instead of the MegatronMIMO
+# path used by tune_2b.sh / tune_4b.sh / tune_9b.sh / tune_35b_a3b.sh.
 # All features (recompute, CUDA graph, offload, etc.) are aligned;
 # only the training path differs (pretrain vs pretrain_megatron_mimo).
 
@@ -20,7 +21,6 @@ MASTER_ADDR="${MASTER_ADDR:-localhost}"
 MASTER_PORT="${MASTER_PORT:-29501}"
 TRAIN_ITERS="${TRAIN_ITERS:-20}"
 LOG_INTERVAL="${LOG_INTERVAL:-1}"
-DATASET_ROOT="${DATASET_ROOT:-/ppusw/datasets_sh}"
 HF_MODEL="${HF_MODEL:-Qwen/Qwen3.5-27B}"
 
 SCRIPT="train_qwen35_vl_vlm.py"
@@ -58,10 +58,14 @@ run_exp() {
         --output-dir "${log_dir}/tensorboard_node${RANK}" \
         --train-iters "$TRAIN_ITERS" \
         --log-interval "$LOG_INTERVAL" \
+        --enable-profiler \
+        --enable-memory-snapshot \
+        --memory-snapshot-path "${log_dir}/memory_snapshot_node${RANK}.pickle" \
+        --profile-step-start 10 \
+        --profile-step-end 11 \
         "${extra_args[@]}" \
         2>&1 | tee "$log_file"
     exit_code=${PIPESTATUS[0]}
-    set -e
 
     if [[ $exit_code -ne 0 ]]; then
         echo "[WARN] ${tag} FAILED (exit ${exit_code}), continuing sweep..."
@@ -74,12 +78,29 @@ run_exp() {
 }
 
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-export NCCL_CTA_POLICY=0x1
+ENABLE_COPY_ENGINE="${ENABLE_COPY_ENGINE:-0}"
+case "$ENABLE_COPY_ENGINE" in
+    1)
+        export NCCL_CTA_POLICY=2
+        export PCCL_CE_ENABLE_RS=1
+        ;;
+    0)
+        export NCCL_CTA_POLICY=0x1
+        export PCCL_CE_ENABLE_RS=0
+        ;;
+    *)
+        echo "ENABLE_COPY_ENGINE must be 0 or 1" >&2
+        exit 2
+        ;;
+esac
+export ENABLE_COPY_ENGINE
 export NCCL_GRAPH_REGISTER=0
 export MEGATRON_LOGGING_LEVEL=20
 export NVTE_CPU_OFFLOAD_V1=1 ; export UB_SKIPMC=1 ;
 export NVTE_USE_CUTLASS_GROUPED_GEMM=1;
 export TRITON_CACHE_DIR=/tmp/triton_cache_$(hostname)
+export PYTORCH_ENABLE_PPU_ELEMENTWISE_OPT=1;
+export PYTORCH_ENABLE_BROADCAST_SPECIALIZATION=1;
 export MEGATRON_VISION_FIXED_LENGTH_ATTENTION=1;
 
 TP="${TP:-2}"
@@ -93,8 +114,9 @@ SEQ_LEN="${SEQ_LEN:-4096}"
 MBS="${MBS:-1}"
 GA="${GA:-8}"
 
-run_exp "27b_${SEQ_LEN}seq_${NUM_IMAGES}img_${IMAGE_SIZE_W}x${IMAGE_SIZE_H}_${MBS}mbs_${GA}ga" \
+run_exp "27b_${SEQ_LEN}seq_${NUM_IMAGES}img_${IMAGE_SIZE_W}x${IMAGE_SIZE_H}_${MBS}mbs_${GA}ga${TAG_SUFFIX:-}" \
     --tp $TP --cp $CP  \
     --mbs $MBS --ga $GA \
     --seq-length $SEQ_LEN --num-images $NUM_IMAGES --image-size-w $IMAGE_SIZE_W --image-size-h $IMAGE_SIZE_H \
-    --enable-sp --enable-fsdp
+    --enable-sp --enable-fsdp --enable-grad-overlap --cross-entropy-fusion-impl te \
+    --linear-cp-mode headwise ${EXTRA_ARGS:-}

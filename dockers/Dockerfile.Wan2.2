@@ -32,10 +32,10 @@ RUN rm -f /root/.gitconfig \
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install -e "${VIDEOX_FUN_ROOT}" \
-    && python -m pip install --no-deps "diffusers==0.36.0" "omegaconf==2.3.0" \
+    && python -m pip install --no-deps "diffusers==0.36.0" "omegaconf==2.3.0" "datasets==3.2.0" \
     && python -m pip install \
         "peft==0.17.0" "antlr4-python3-runtime==4.9.3" \
-        opencv-python av imageio imageio-ffmpeg \
+        "opencv-python==4.11.0.86" av imageio imageio-ffmpeg \
         librosa sentencepiece tomesd torchdiffeq torchsde \
         scikit-image albumentations yunchang xfuser \
         "transformers==4.51.0" "scipy==1.11.3" "numpy==1.26.4" einops uv \

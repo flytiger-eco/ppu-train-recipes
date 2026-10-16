@@ -1,12 +1,12 @@
 # Wan 2.2 5B M890 Performance Recipe
 
-This directory contains only the reproduction instructions. The training entry point and dependencies are added to the image by `Dockerfile.M890.Wan2.2` and `wan2.2.patch`.
+This directory contains only the reproduction instructions. The training entry point and dependencies are added to the image by `Dockerfile.Wan2.2` and `wan2.2.patch`.
 
 ## Baseline
 
 - Source: <https://github.com/aigc-apps/VideoX-Fun.git>
 - Commit: `67e3b4b8184ae8ff61ab3e3fbdb68bb817f41515`
-- Dockerfile: `dockers/Dockerfile.M890.Wan2.2`
+- Dockerfile: `dockers/Dockerfile.Wan2.2`
 - Patch: `dockers/patches/wan2.2.patch`
 - Hardware: One node with 8 M890 144 GiB cards
 - Model: Wan2.2-TI2V-5B
@@ -21,7 +21,7 @@ cd /path/to/ppu-train-recipes
 export BASE_IMAGE=pkg.flytiger-eco.com/docker_release/pytorch:sdk2.2.0-2.10.0-ubuntu24.04-cuda13.0-py312-20261001
 DOCKER_BUILDKIT=0 docker build --network=host \
   --build-arg BASE_IMAGE="$BASE_IMAGE" \
-  -f dockers/Dockerfile.M890.Wan2.2 \
+  -f dockers/Dockerfile.Wan2.2 \
   -t ppu-wan2.2:M890 .
 ```
 
