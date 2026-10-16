@@ -1,7 +1,10 @@
 name: Build Wan2.2 Image
 
-# 手动触发构建, 或针对 feature/for-ci-test 分支的 PR 触发
+# 手动触发构建, 或针对 feature/for-ci-test 分支的 push/PR 触发
 on:
+  push:
+    branches:
+      - feature/for-ci-test
   pull_request:
     branches:
       - feature/for-ci-test
